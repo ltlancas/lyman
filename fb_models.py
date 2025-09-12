@@ -11,6 +11,7 @@ from scipy.optimize import brentq
 from abc import ABC, abstractmethod
 
 import wind_solutions
+import shell_structure
 
 #########################################################################################
 ########################### CLASSICAL BUBBLE EVOLUTION MODELS ###########################
@@ -63,10 +64,10 @@ class SedovTaylorBW(Bubble):
     # Sedov Taylor Solution for an instantaneous blast wave
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "E" not in self.__dict__:
             self.E = 1e51*u.erg
     
@@ -102,14 +103,14 @@ class Spitzer(Bubble):
     # includes the Hosokawa & Inutsuka (2006) correction
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
 
         self.nbar = self.rho0/(self.muH*ac.m_p)
         self.RSt = quantities.RSt(self.Q0, self.nbar, alphaB=self.alphaB)
         self.tdio = quantities.Tdion(self.Q0, self.nbar, ci=self.ci, alphaB=self.alphaB)
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "ci" not in self.__dict__:
@@ -171,10 +172,10 @@ class EnergyDrivenWind(Bubble):
     # Weaver solution for a wind bubble
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "Lwind" not in self.__dict__:
             self.Lwind = 1e38*u.erg/u.s
     
@@ -210,23 +211,17 @@ class AdiabaticWind(Bubble):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
         self._ad_shell_solve(-2./3)
         self._set_derived_parameters()
-
-        
 
         # set free-wind solution
         fw_dict = {"Mdot": self.Mdotw, "Edot": self.Lwind,
                    "R": self.rfb, "gamma":self.gamma}
         self.free_wind = wind_solutions.CC85Wind(**fw_dict)
 
-    def _set_parmeters(self, **kwargs):
-        # scaling paramter for dimensional analysis solution
-        # given after Equation 13 of Weaver et al. (1977)
-        self.alpha = 0.88
-
+    def _set_parmeters(self):
         if "Lwind" not in self.__dict__:
             self.Lwind = 1e38*u.erg/u.s
         if "Mdotw" not in self.__dict__:
@@ -415,15 +410,14 @@ class AdiabaticWind(Bubble):
         res = np.sqrt(gfac*Rc**3/R_ballistic)
         return res.to("pc")
 
-
 class MomentumDrivenWind(Bubble):
     # Momentum-driven bubble solution
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "pdotw" not in self.__dict__:
             self.pdotw = 1e5*u.Msun*u.km/u.s/u.Myr
 
@@ -464,7 +458,7 @@ class MD_CEM(Bubble):
     # up until t_eq, the equilibration time
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
         self._set_derived_parameters()
 
@@ -478,7 +472,7 @@ class MD_CEM(Bubble):
         # call ODE integrator to get the joint evolution solution
         self.joint_sol = self.joint_evol()
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "pdotw" not in self.__dict__:
@@ -666,7 +660,7 @@ class ED_CEM(Bubble):
     # up until t_eq, the equilibration time
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._set_parmeters(**kwargs)
+        self._set_parmeters()
         self._check_parameter_units()
         self._set_derived_parameters()
 
@@ -680,7 +674,7 @@ class ED_CEM(Bubble):
         # call ODE integrator to get the joint evolution solution
         self.joint_sol = self.joint_evol()
 
-    def _set_parmeters(self, **kwargs):
+    def _set_parmeters(self):
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "Lwind" not in self.__dict__:
