@@ -18,11 +18,24 @@ import wind_solutions
 #########################################################################################
 
 class Bubble(ABC):
+    """
+    Abstract base class for feedback bubble evolution models.
+
+    Subclasses must implement the shell radius, velocity, momentum, and
+    pressure as a function of time.
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+        """
         self._set_parmeters_parent(**kwargs)
         self._check_parameter_units_parent()
 
     def _set_parmeters_parent(self, **kwargs):
+        """Sets base parameters from kwargs, applying the default background
+        density if not provided."""
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -30,62 +43,128 @@ class Bubble(ABC):
             self.rho0 = 140*ac.m_p/(u.cm**3)
 
     def _check_parameter_units_parent(self):
+        """Validates the units of the base bubble parameters."""
         if not u.get_physical_type(self.rho0) == "mass density":
             raise ValueError("Units of rho0 are incorrect")
 
     @abstractmethod
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """Returns the shell radius as a function of time."""
         pass
 
     @abstractmethod
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """Returns the shell velocity as a function of time."""
         pass
 
     @abstractmethod
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """Returns the shell momentum as a function of time."""
         pass
 
     @abstractmethod
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
+        """Returns the interior pressure as a function of time."""
         pass
 
 class SedovTaylorBW(Bubble):
-    # Sedov Taylor Solution for an instantaneous blast wave
+    """
+    Sedov-Taylor solution for a spherically symmetric blast wave from an
+    instantaneous point explosion.
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            E: explosion energy (default: 1e51 erg)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
 
     def _set_parmeters(self, **kwargs):
+        """Sets SedovTaylorBW-specific parameters, applying defaults if not provided."""
         if "E" not in self.__dict__:
             self.E = 1e51*u.erg
 
     def _check_parameter_units(self):
+        """Validates the units of SedovTaylorBW-specific parameters."""
         if not u.get_physical_type(self.E) == "energy":
             raise ValueError("Units of E are incorrect")
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """
+        Returns the blast wave radius.
+
+        Args:
+            t: time
+
+        Returns:
+            Blast wave radius in parsecs
+        """
         r_ST = 1.15167*(self.E*t**2/(self.rho0))**(1./5)
         return r_ST.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """
+        Returns the blast wave shell velocity.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell velocity in km/s
+        """
         v_ST = 0.4*self.radius(t)/t
         return v_ST.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """
+        Returns the blast wave shell momentum.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell momentum in Msun * km/s
+        """
         pr_ST = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_ST.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
-        # TODO: fill this in with the correct number, this is simply
-        #       a placeholder estimate
+        """
+        Returns the interior pressure.
+
+        TODO: replace with the correct Sedov-Taylor pressure; this is a
+        placeholder estimate using E/R^3.
+
+        Args:
+            t: time
+
+        Returns:
+            Interior pressure in K/cm^3
+        """
         press_ST = self.E/(self.radius(t)**3)
         return (press_ST/ac.k_B).to("K/cm3")
 
 class Spitzer(Bubble):
-    # Spitzer solution for a photo-ionized gas bubble
-    # includes the Hosokawa & Inutsuka (2006) correction
+    """
+    Spitzer solution for the expansion of a photo-ionized (HII region) gas bubble,
+    including the Hosokawa & Inutsuka (2006) correction to the shell momentum.
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Q0: ionizing photon rate (default: 1e50 /s)
+            ci: ionized gas sound speed (default: 10 km/s)
+            alphaB: case B recombination rate (default: 3.11e-13 cm^3/s)
+            muH: mean molecular weight per hydrogen nucleus (default: 1.4)
+            adj: if True, apply the Hosokawa & Inutsuka (2006) momentum
+                 correction (default: True)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
@@ -95,6 +174,7 @@ class Spitzer(Bubble):
         self.tdio = quantities.Tdion(self.Q0, self.nbar, ci=self.ci, alphaB=self.alphaB)
 
     def _set_parmeters(self, **kwargs):
+        """Sets Spitzer-specific parameters, applying defaults if not provided."""
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "ci" not in self.__dict__:
@@ -107,6 +187,7 @@ class Spitzer(Bubble):
             self.adj = True
 
     def _check_parameter_units(self):
+        """Validates the units of Spitzer-specific parameters."""
         if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
         if not u.get_physical_type(self.ci) == "speed":
@@ -119,18 +200,55 @@ class Spitzer(Bubble):
             raise ValueError("adj must be a boolean value")
 
     def rhoi(self, t: Quantity["time"]) -> Quantity["mass density"]:
+        """
+        Returns the mean density of the ionized interior.
+
+        Args:
+            t: time
+
+        Returns:
+            Interior density in Msun/pc^3
+        """
         rhoi_sp = self.rho0*(1 + 7*t/(4*self.tdio))**(-3./2)
         return rhoi_sp.to("solMass/pc3")
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """
+        Returns the HII region radius.
+
+        Args:
+            t: time
+
+        Returns:
+            HII region radius in parsecs
+        """
         r_sp = self.RSt*(1 + 7*t/(4*self.tdio))**(4./7)
         return r_sp.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """
+        Returns the HII region expansion velocity.
+
+        Args:
+            t: time
+
+        Returns:
+            Expansion velocity in km/s
+        """
         v_sp = (self.RSt/self.tdio)*(1 + 7*t/(4*self.tdio))**(-3./7)
         return v_sp.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """
+        Returns the shell momentum, optionally with the Hosokawa & Inutsuka
+        (2006) correction.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell momentum in Msun * km/s
+        """
         prefac = 4*np.pi*self.rho0*self.RSt**4/(3*self.tdio)
         pr_sp = prefac*(1 + 7*t/(4*self.tdio))**(9./7)
         if self.adj:
@@ -138,46 +256,115 @@ class Spitzer(Bubble):
         return pr_sp.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
+        """
+        Returns the interior thermal pressure of the ionized gas.
+
+        Args:
+            t: time
+
+        Returns:
+            Interior pressure in K/cm^3
+        """
         press_sp = self.rhoi(t)*self.ci**2
         return (press_sp/ac.k_B).to("K/cm3")
 
 class EnergyDrivenWind(Bubble):
-    # Weaver solution for a wind bubble
+    """
+    Weaver et al. (1977) solution for a wind-blown bubble in the energy-driven
+    (radiative cooling negligible) regime. The shell expands as R ~ t^(3/5).
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Lwind: wind mechanical luminosity (default: 1e38 erg/s)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
 
     def _set_parmeters(self, **kwargs):
+        """Sets EnergyDrivenWind-specific parameters, applying defaults if not provided."""
         if "Lwind" not in self.__dict__:
             self.Lwind = 1e38*u.erg/u.s
 
     def _check_parameter_units(self):
+        """Validates the units of EnergyDrivenWind-specific parameters."""
         if not u.get_physical_type(self.Lwind) == "power":
             raise ValueError("Units of L_wind are incorrect")
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """
+        Returns the wind bubble shell radius.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell radius in parsecs
+        """
         r_we = (125*self.Lwind*(t**3)/(154*np.pi*self.rho0))**(1./5)
         return r_we.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """
+        Returns the wind bubble shell velocity.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell velocity in km/s
+        """
         v_we = 0.6*self.radius(t)/t
         return v_we.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """
+        Returns the wind bubble shell momentum.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell momentum in Msun * km/s
+        """
         pr_we = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_we.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
+        """
+        Returns the interior pressure of the hot wind bubble.
+
+        Args:
+            t: time
+
+        Returns:
+            Interior pressure in K/cm^3
+        """
         press_we = (10./33)*self.Lwind*t/((4*np.pi/3)*self.radius(t)**3)
         return (press_we/ac.k_B).to("K/cm3")
 
 class AdiabaticWind(Bubble):
-    # Weaver solution Section 2 for an adiabatic wind bubble
-    # assumes no radiative losses, even in the shell.
-    # We don't treat conduction here either
+    """
+    Weaver et al. (1977) Section 2 solution for an adiabatic wind bubble.
+
+    No radiative losses are assumed anywhere in the bubble, including in the
+    shell. Thermal conduction is also not treated. The internal structure
+    (free-wind, shocked-wind, shell, and background regions) is computed from
+    the dimensionless shell structure equations and a CC85 free-wind solution.
+    """
 
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Lwind: wind mechanical luminosity (default: 1e38 erg/s)
+            Mdotw: wind mass loss rate (default: 1e-4 Msun/yr)
+            rfb: free-wind injection radius (default: 1 pc)
+            gamma: adiabatic index (default: 5/3)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
@@ -192,7 +379,14 @@ class AdiabaticWind(Bubble):
         self.free_wind = wind_solutions.CC85Wind(**fw_dict)
 
     def _set_parmeters(self, **kwargs):
-        # scaling paramter for dimensional analysis solution
+        """
+        Sets AdiabaticWind-specific parameters, applying defaults if not provided.
+
+        Initialises alpha to the approximate Weaver et al. (1977) value of 0.88
+        (given after their Equation 13); this is later refined by the numerical
+        shell solution in _set_derived_parameters.
+        """
+        # scaling parameter for dimensional analysis solution
         # given after Equation 13 of Weaver et al. (1977)
         self.alpha = 0.88
 
@@ -204,8 +398,9 @@ class AdiabaticWind(Bubble):
             self.rfb = 1.0*u.pc
         if "gamma" not in self.__dict__:
             self.gamma = 5./3
-    
+
     def _check_parameter_units(self):
+        """Validates the units of AdiabaticWind-specific parameters."""
         if not u.get_physical_type(self.Lwind) == "power":
             raise ValueError("Units of L_wind are incorrect")
         if not u.get_physical_type(self.rfb) == "length":
@@ -214,6 +409,16 @@ class AdiabaticWind(Bubble):
             raise ValueError("Units of Mdot_w are incorrect")
 
     def _set_derived_parameters(self):
+        """
+        Computes derived parameters from the numerical shell structure solution.
+
+        Sets self.xic (the dimensionless inner shell radius, ~0.86), self.Pxic
+        (the dimensionless pressure at the inner shell edge, ~0.59), self.alpha
+        (the dimensionless scaling prefactor, ~0.88), and self.Vwind (the wind
+        terminal velocity). All three dimensionless quantities are determined
+        directly from the numerical solution rather than using the approximate
+        Weaver et al. (1977) values.
+        """
         # fraction of the shell's outer radius at which the shell's inner radius lies
         # approximate 0.86, but determined here from the numerical solution
         xic = self.ad_shell_sol.t[-1]
@@ -221,7 +426,7 @@ class AdiabaticWind(Bubble):
         # shell radius. Approx 0.59 but determined here from the numerical solution
         Pxic = self.ad_shell_sol.y[2,-1]
         g = self.gamma
-        # the dimensionless pre-factor in the scaling solution. Approx 0.88 but 
+        # the dimensionless pre-factor in the scaling solution. Approx 0.88 but
         # determined here for general gamma and the numerical solution
         self.alpha = (125*(g - 1)/(12*np.pi*xic**3*Pxic*(9*g - 4)))**0.2
         (self.xic, self.Pxic) = (xic, Pxic)
@@ -232,27 +437,73 @@ class AdiabaticWind(Bubble):
     #################################################################
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """
+        Returns the outer shell radius.
+
+        Args:
+            t: time
+
+        Returns:
+            Outer shell radius in parsecs
+        """
         r_we = self.alpha*(self.Lwind*(t**3)/self.rho0)**(1./5)
         return r_we.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """
+        Returns the outer shell velocity.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell velocity in km/s
+        """
         v_we = 0.6*self.radius(t)/t
         return v_we.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """
+        Returns the outer shell momentum.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell momentum in Msun * km/s
+        """
         pr_we = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_we.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
+        """
+        Returns the interior pressure of the shocked wind region.
+
+        Args:
+            t: time
+
+        Returns:
+            Interior pressure in K/cm^3
+        """
         g = self.gamma
         prefac = 15*(g-1)/(4*np.pi*(9*g-4)*(self.xic*self.alpha)**3)
         press_we = prefac*(self.Lwind**2 * self.rho0**3 / t**4)**(1./5)
         return (press_we/ac.k_B).to("K/cm3")
 
     def density_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["mass density"]:
-        # returns the density of the bubble at radius r and time t
-        # r : radius (generally an array)
-        # t : time (should be a scalar)
+        """
+        Returns the density profile at a given time.
+
+        The profile has four zones: free wind (r < r_rs), shocked wind
+        (r_rs <= r < r_c), shell (r_c <= r <= r_b), and background (r > r_b).
+
+        Args:
+            r: radius array
+            t: time (scalar)
+
+        Returns:
+            Density profile in Msun/pc^3
+        """
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -268,9 +519,19 @@ class AdiabaticWind(Bubble):
         return rho.to("solMass/pc3")
     
     def velocity_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["speed"]:
-        # returns the velocity of the bubble at radius r and time t
-        # r : radius (generally an array)
-        # t : time (should be a scalar)
+        """
+        Returns the velocity profile at a given time.
+
+        The profile has four zones: free wind (r < r_rs), shocked wind
+        (r_rs <= r < r_c), shell (r_c <= r <= r_b), and background (r > r_b).
+
+        Args:
+            r: radius array
+            t: time (scalar)
+
+        Returns:
+            Velocity profile in km/s
+        """
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -286,9 +547,19 @@ class AdiabaticWind(Bubble):
         return u.to("km/s")
     
     def pressure_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["pressure"]:
-        # returns the pressure of the bubble at radius r and time t
-        # r : radius (generally an array)
-        # t : time (should be a scalar)
+        """
+        Returns the pressure profile at a given time.
+
+        The profile has four zones: free wind (r < r_rs), shocked wind
+        (r_rs <= r < r_c), shell (r_c <= r <= r_b), and background (r > r_b).
+
+        Args:
+            r: radius array
+            t: time (scalar)
+
+        Returns:
+            Pressure profile in K/cm^3
+        """
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -350,7 +621,16 @@ class AdiabaticWind(Bubble):
         return None
     
     def _v_sw(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["speed"]:
-        # gives the radial velocity in the shocked wind region
+        """
+        Returns the radial velocity in the shocked wind region.
+
+        Args:
+            r: radius
+            t: time
+
+        Returns:
+            Velocity in km/s
+        """
         g = self.gamma
         r_c = self.xic*self.radius(t)
         gfac = (9*g-4)/(15*g)
@@ -359,8 +639,15 @@ class AdiabaticWind(Bubble):
         return t1 + t2
     
     def R_rs(self, t: Quantity["time"]) -> Quantity["length"]:
-        # gives the radius of the reverse shock as a function of time in the
-        # adiabatic wind bubble solution
+        """
+        Returns the reverse shock radius.
+
+        Args:
+            t: time
+
+        Returns:
+            Reverse shock radius in parsecs
+        """
         Rc = self.xic*self.radius(t)
         R_ballistic = self.Vwind*t
         g = self.gamma
@@ -370,33 +657,80 @@ class AdiabaticWind(Bubble):
 
 
 class MomentumDrivenWind(Bubble):
-    # Momentum-driven bubble solution
+    """
+    Momentum-driven wind bubble solution. The shell expands as R ~ t^(1/2),
+    driven by the direct ram pressure of the wind.
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            pdotw: wind momentum injection rate (default: 1e5 Msun*km/s/Myr)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
 
     def _set_parmeters(self, **kwargs):
+        """Sets MomentumDrivenWind-specific parameters, applying defaults if not provided."""
         if "pdotw" not in self.__dict__:
             self.pdotw = 1e5*u.Msun*u.km/u.s/u.Myr
 
     def _check_parameter_units(self):
+        """Validates the units of MomentumDrivenWind-specific parameters."""
         if not u.get_physical_type(self.pdotw) == "force":
             raise ValueError("Units of pdotw are incorrect")
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
+        """
+        Returns the shell radius.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell radius in parsecs
+        """
         r_md = ((3*self.pdotw*t**2)/(2*np.pi*self.rho0))**(1./4)
         return r_md.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        """
+        Returns the shell velocity.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell velocity in km/s
+        """
         v_md = 0.5*self.radius(t)/t
         return v_md.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        """
+        Returns the shell momentum.
+
+        Args:
+            t: time
+
+        Returns:
+            Shell momentum in Msun * km/s
+        """
         pr_md = self.pdotw*t
         return pr_md.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
+        """
+        Returns the wind ram pressure at the shell.
+
+        Args:
+            t: time
+
+        Returns:
+            Ram pressure in K/cm^3
+        """
         press_md = self.pdotw/(4*np.pi*self.radius(t)**2)
         return (press_md/ac.k_B).to("K/cm3")
 
@@ -406,11 +740,25 @@ class MomentumDrivenWind(Bubble):
 #########################################################################################
 
 class MD_CEM(Bubble):
-    # Joint solution for the evolution of a photo-ionized gas bubble
-    # and a momentum-driven wind bubble in force balance with one another
-    # assumes that the bubbles are uncoupled and evolve independently
-    # up until t_eq, the equilibration time
+    """
+    Co-evolution model (CEM) for the joint expansion of a photo-ionized gas
+    bubble and a momentum-driven wind bubble in pressure equilibrium.
+
+    Before the equilibration time t_eq, the two bubbles evolve independently
+    (Spitzer and MomentumDrivenWind solutions). After t_eq they are coupled
+    via a joint ODE system.
+    """
+
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Q0: ionizing photon rate (default: 1e50 /s)
+            pdotw: wind momentum injection rate (default: 1e5 Msun*km/s/Myr)
+            ci: ionized gas sound speed (default: 10 km/s)
+            alphaB: case B recombination rate (default: 3.11e-13 cm^3/s)
+            muH: mean molecular weight per hydrogen nucleus (default: 1.4)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
@@ -427,6 +775,7 @@ class MD_CEM(Bubble):
         self.joint_sol = self.joint_evol()
 
     def _set_parmeters(self, **kwargs):
+        """Sets MD_CEM-specific parameters, applying defaults if not provided."""
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "pdotw" not in self.__dict__:
@@ -439,6 +788,7 @@ class MD_CEM(Bubble):
             self.muH = 1.4
 
     def _check_parameter_units(self):
+        """Validates the units of MD_CEM-specific parameters."""
         if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
         if not u.get_physical_type(self.ci) == "speed":
@@ -470,10 +820,15 @@ class MD_CEM(Bubble):
             self.tswitch = min(self.teq.value, tot.value)*u.Myr
 
     def _get_Tot(self):
-        # Returns the time at which the WBB overtakes the PIR
-        # used as the switch-over time in the zeta > 1 case.
-        # root found in dimensionless form, as in Equation C35
-        # of Paper 1
+        """
+        Returns the time at which the wind bubble overtakes the HII region.
+
+        Used as the switch-over time when zeta > 1. The root is found in
+        dimensionless form following Equation C35 of Paper 1.
+
+        Returns:
+            Overtake time in Myr
+        """
         fac1 = (4.5**0.25)*np.sqrt(self.zeta)
         f  = lambda x: fac1*np.sqrt(x) - (1 + 1.75*x)**(4./7)
         # over-take time only matters if it is smaller than t_eq
@@ -486,10 +841,32 @@ class MD_CEM(Bubble):
 
     @staticmethod
     def _get_largest_real(roots):
+        """
+        Returns the largest real root from an array of (possibly complex) roots.
+
+        Args:
+            roots: array of roots
+
+        Returns:
+            Largest real root
+        """
         real_roots = np.real(roots[np.isreal(roots)])
         return np.max(real_roots)
 
     def get_xiw(self, xii):
+        """
+        Returns the dimensionless wind bubble radius xiw corresponding to a
+        given dimensionless ionized bubble radius xii.
+
+        Solves the volume-balance polynomial relating the two radii via the
+        pressure-equilibrium condition.
+
+        Args:
+            xii: dimensionless ionized bubble radius (scalar or array)
+
+        Returns:
+            Dimensionless wind bubble radius array
+        """
         xiw = []
         for xi in xii:
             p = [self.zeta**-3, 1.0, 0., 0., -1*(xi**3)]
@@ -498,9 +875,17 @@ class MD_CEM(Bubble):
         return np.array(xiw)
 
     def joint_evol(self):
-        # Gives the solution for the joint dynamical evolution of
-        # photo-ionized gas and a wind bubble
-        # zeta : the Req/RSt ratio, free parameter of the model
+        """
+        Solves the joint dynamical evolution of the HII region and wind bubble
+        after t_switch using scipy's solve_ivp.
+
+        The dimensionless ODE system evolves the ionized bubble radius xii and
+        its dimensionless velocity psi as functions of chi = (t - t_switch)/t_dio.
+        The free parameter is zeta = Req/RSt.
+
+        Returns:
+            OdeSolution object from solve_ivp with dense output enabled
+        """
 
         zeta = self.zeta
 
@@ -532,7 +917,17 @@ class MD_CEM(Bubble):
         return solve_ivp(derivs,[0,100],[xii0,psi0],dense_output=True)
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
-        # Returns the radius of the ionized bubble at time t
+        """
+        Returns the radius of the ionized bubble.
+
+        Follows the Spitzer solution before t_switch and the joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble radius in parsecs
+        """
         ri = self.spitz_bubble.radius(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -540,10 +935,19 @@ class MD_CEM(Bubble):
         return ri.to("pc")
 
     def wind_radius(self, t: Quantity["time"]) -> Quantity["length"]:
-        # Returns the radius of the wind bubble at time t
-        # up until tswitch the wind bubble follows the normal momentum-driven solution
+        """
+        Returns the radius of the wind bubble.
+
+        Follows the MomentumDrivenWind solution before t_switch and the joint
+        solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Wind bubble radius in parsecs
+        """
         rw = self.wind_bubble.radius(t)*(t<self.tswitch)
-        # afterwards it follows the joint evolution solution
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         xiw = self.get_xiw(solution[0])
@@ -551,8 +955,17 @@ class MD_CEM(Bubble):
         return rw.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
-        # Returns the velocity of the ionized bubble at time t
-        # up until tswitch the ionized bubble follows the Spitzer solution
+        """
+        Returns the velocity of the ionized bubble.
+
+        Follows the Spitzer solution before t_switch and the joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble velocity in km/s
+        """
         vi = self.spitz_bubble.velocity(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -560,7 +973,18 @@ class MD_CEM(Bubble):
         return vi.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
-        # returns the momentum carried by the joint bubble at time t
+        """
+        Returns the momentum of the joint bubble.
+
+        Sums the Spitzer and wind bubble momenta before t_switch; uses the
+        joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Total shell momentum in Msun * km/s
+        """
         prefac = self.pscl
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -570,29 +994,67 @@ class MD_CEM(Bubble):
         return pr.to("solMass*km/s")
 
     def momentum_uncoupled(self, t: Quantity["time"]) -> Quantity["momentum"]:
-        # returns the momentum carried by the joint bubble at time t
-        # if the two constituent bubbles evolved independently
+        """
+        Returns the total momentum assuming the two bubbles evolved independently.
+
+        Args:
+            t: time
+
+        Returns:
+            Sum of Spitzer and wind bubble momenta in Msun * km/s
+        """
         pr = self.spitz_bubble.momentum(t)
         pr += self.wind_bubble.momentum(t)
         return pr.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
-        # returns the pressure of the wind bubble at time t
+        """
+        Returns the wind bubble ram pressure at the shell.
+
+        Args:
+            t: time
+
+        Returns:
+            Wind pressure in K/cm^3
+        """
         press = self.pdotw/(4*np.pi*self.wind_radius(t)**2)
         return (press/ac.k_B).to("K/cm3")
 
     def pressure_ionized(self, t: Quantity["time"]) -> Quantity["pressure"]:
-        # returns the pressure of the ionized bubble at time t
+        """
+        Returns the pressure of the ionized bubble.
+
+        Uses the Spitzer pressure before t_switch and the wind pressure after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble pressure in K/cm^3
+        """
         press = self.spitz_bubble.pressure(t)*(t<self.tswitch)
         press += self.pressure(t)*(t>self.tswitch)
         return press
 
 class ED_CEM(Bubble):
-    # Joint solution for the evolution of a photo-ionized gas bubble
-    # and a wind bubble in force balance with each other
-    # assumes that the bubbles are uncoupled and evolve independently
-    # up until t_eq, the equilibration time
+    """
+    Co-evolution model (CEM) for the joint expansion of a photo-ionized gas
+    bubble and an energy-driven wind bubble in pressure equilibrium.
+
+    Before the equilibration time t_eq, the two bubbles evolve independently
+    (Spitzer and EnergyDrivenWind solutions). After t_eq they are coupled
+    via a joint ODE system that also tracks the wind bubble's internal energy.
+    """
     def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Q0: ionizing photon rate (default: 1e50 /s)
+            Lwind: wind mechanical luminosity (default: 1e38 erg/s)
+            ci: ionized gas sound speed (default: 10 km/s)
+            alphaB: case B recombination rate (default: 3.11e-13 cm^3/s)
+            muH: mean molecular weight per hydrogen nucleus (default: 1.4)
+        """
         super().__init__(**kwargs)
         self._set_parmeters(**kwargs)
         self._check_parameter_units()
@@ -609,6 +1071,7 @@ class ED_CEM(Bubble):
         self.joint_sol = self.joint_evol()
 
     def _set_parmeters(self, **kwargs):
+        """Sets ED_CEM-specific parameters, applying defaults if not provided."""
         if "Q0" not in self.__dict__:
             self.Q0 = 1e50/u.s
         if "Lwind" not in self.__dict__:
@@ -621,6 +1084,7 @@ class ED_CEM(Bubble):
             self.muH = 1.4
 
     def _check_parameter_units(self):
+        """Validates the units of ED_CEM-specific parameters."""
         if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
         if not u.get_physical_type(self.ci) == "speed":
@@ -651,10 +1115,15 @@ class ED_CEM(Bubble):
             self.tswitch = min(self.teq.value, tot.value)*u.Myr
 
     def _get_Tot(self):
-        # Returns the time at which the WBB overtakes the PIR
-        # used as the seitch-over time in the zeta > 1 case.
-        # root found in dimensionless form, as in Equation C35
-        # of Paper 1
+        """
+        Returns the time at which the wind bubble overtakes the HII region.
+
+        Used as the switch-over time when zeta > 1. The root is found in
+        dimensionless form following Equation C35 of Paper 1.
+
+        Returns:
+            Overtake time in Myr
+        """
         fac1 = ((2.5*np.sqrt(3./7))**0.6)*(self.zeta**0.4)
         f  = lambda x: fac1*(x**0.6) - (1 + 1.75*x)**(4./7)
         # over-take time only matters if it is smaller than t_eq
@@ -666,9 +1135,18 @@ class ED_CEM(Bubble):
         return (chi_ot*self.tdio).to(u.Myr)
 
     def joint_evol(self):
-        # Gives the solution for the joint dynamical evolution of
-        # photo-ionized gas and a wind bubble
-        # zeta : the Req/RSt ratio, free parameter of the model
+        """
+        Solves the joint dynamical evolution of the HII region and wind bubble
+        after t_switch using scipy's solve_ivp.
+
+        The dimensionless ODE system evolves the ionized bubble radius xii,
+        its dimensionless momentum Mi, the wind bubble radius xiw, and the
+        dimensionless wind internal energy Et, as functions of
+        chi = (t - t_switch)/t_dio. The free parameter is zeta = Req/RSt.
+
+        Returns:
+            OdeSolution object from solve_ivp with dense output enabled
+        """
 
         zeta = self.zeta
 
@@ -706,7 +1184,17 @@ class ED_CEM(Bubble):
         return solve_ivp(derivs,[0,100],[xii0,Mi0,xiw0,Et0],dense_output=True)
 
     def radius(self, t: Quantity["time"]) -> Quantity["length"]:
-        # Returns the radius of the ionized bubble at time t
+        """
+        Returns the radius of the ionized bubble.
+
+        Follows the Spitzer solution before t_switch and the joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble radius in parsecs
+        """
         ri = self.spitz_bubble.radius(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -714,10 +1202,19 @@ class ED_CEM(Bubble):
         return ri.to("pc")
 
     def wind_radius(self, t: Quantity["time"]) -> Quantity["length"]:
-        # Returns the radius of the wind bubble at time t
-        # up until tswitch the wind bubble follows the normal momentum-driven solution
+        """
+        Returns the radius of the wind bubble.
+
+        Follows the EnergyDrivenWind solution before t_switch and the joint
+        solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Wind bubble radius in parsecs
+        """
         rw = self.wind_bubble.radius(t)*(t<self.tswitch)
-        # afterwards it follows the joint evolution solution
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         xiw = solution[2]
@@ -725,8 +1222,17 @@ class ED_CEM(Bubble):
         return rw.to("pc")
 
     def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
-        # Returns the velocity of the ionized bubble at time t
-        # up until tswitch the ionized bubble follows the Spitzer solution
+        """
+        Returns the velocity of the ionized bubble.
+
+        Follows the Spitzer solution before t_switch and the joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble velocity in km/s
+        """
         vi = self.spitz_bubble.velocity(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -734,7 +1240,18 @@ class ED_CEM(Bubble):
         return vi.to("km/s")
 
     def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
-        # returns the momentum carried by the joint bubble at time t
+        """
+        Returns the momentum of the joint bubble.
+
+        Sums the Spitzer and wind bubble momenta before t_switch; uses the
+        joint solution after.
+
+        Args:
+            t: time
+
+        Returns:
+            Total shell momentum in Msun * km/s
+        """
         prefac = (4*np.pi/3)*self.Req**3*self.rho0*self.ci
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -744,14 +1261,32 @@ class ED_CEM(Bubble):
         return pr.to("solMass*km/s")
 
     def momentum_uncoupled(self, t: Quantity["time"]) -> Quantity["momentum"]:
-        # returns the momentum carried by the joint bubble at time t
-        # if the two constituent bubbles evolved independently
+        """
+        Returns the total momentum assuming the two bubbles evolved independently.
+
+        Args:
+            t: time
+
+        Returns:
+            Sum of Spitzer and wind bubble momenta in Msun * km/s
+        """
         pr = self.spitz_bubble.momentum(t)
         pr += self.wind_bubble.momentum(t)
         return pr.to("solMass*km/s")
 
     def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
-        # returns the pressure of the wind bubble at time t
+        """
+        Returns the wind bubble interior pressure.
+
+        Uses the EnergyDrivenWind pressure before t_switch and the joint
+        solution pressure after.
+
+        Args:
+            t: time
+
+        Returns:
+            Wind bubble pressure in K/cm^3
+        """
         press = self.wind_bubble.pressure(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -761,7 +1296,17 @@ class ED_CEM(Bubble):
         return (press).to("K/cm3")
 
     def pressure_ionized(self, t: Quantity["time"]) -> Quantity["pressure"]:
-        # returns the pressure of the ionized bubble at time t
+        """
+        Returns the pressure of the ionized bubble.
+
+        Uses the Spitzer pressure before t_switch and the wind bubble pressure after.
+
+        Args:
+            t: time
+
+        Returns:
+            Ionized bubble pressure in K/cm^3
+        """
         press = self.spitz_bubble.pressure(t)*(t<self.tswitch)
         press += self.pressure(t)*(t>self.tswitch)
         return press
