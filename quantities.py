@@ -107,7 +107,7 @@ def Rch(Q0: Quantity["frequency"],
     r_ch = Req_MD(pdotw, rhobar, ci=ci)**4 / RSt(Q0, nbar, alphaB=alphaB)**3
     return r_ch.to("pc")
 
-def Rwshock(Mdotw: Quantity["mass flow rate"],
+def Rwshock(Mdotw: Quantity,
             rhobar: Quantity["mass density"],
             Vwind: Quantity["speed"]
             ) -> Quantity["length"]:
@@ -150,7 +150,7 @@ def Rcl(Mcl: Quantity["mass"],
 ################################# Time Scale Quantities #################################
 #########################################################################################
 
-def Twshock(Mdotw: Quantity["mass flow rate"],
+def Twshock(Mdotw: Quantity,
             rhobar: Quantity["mass density"],
             Vwind: Quantity["speed"]
             ) -> Quantity["time"]:
