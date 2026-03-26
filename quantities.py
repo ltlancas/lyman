@@ -1,6 +1,14 @@
-# File that contains the definitions of various quantities related to
-# stellar feedback from massive stars
-# author: Lachlan Lancaster
+"""
+Analytical scaling relations for stellar feedback from massive stars.
+
+Provides functions for computing characteristic length and timescales relevant
+to the expansion of feedback bubbles in molecular clouds, including the
+Strömgren radius, wind equilibration radii (momentum- and energy-driven),
+wind shock radius, cloud radius, and the corresponding timescales (free-fall,
+recombination, shell cooling, equilibration, and dynamical expansion times).
+
+Author: Lachlan Lancaster
+"""
 
 import numpy as np
 from astropy import units as u

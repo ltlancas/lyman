@@ -1,5 +1,14 @@
-# The structure of winds from feedback sources
-# author: Lachlan Lancaster
+"""
+Internal structure models for stellar winds from massive star feedback.
+
+Provides the abstract base class WindModel and the Chevalier & Clegg (1985)
+free-wind solution (CC85Wind), which gives the steady-state radial profiles of
+Mach number, sound speed, bulk velocity, density, and pressure for a
+spherically symmetric wind driven by distributed mass and energy sources within
+a starburst region.
+
+Author: Lachlan Lancaster
+"""
 
 import numpy as np
 from astropy import units as u

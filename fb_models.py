@@ -1,6 +1,23 @@
-# Models to the evolution of feedback bubbles
-# stellar feedback from massive stars
-# author: Lachlan Lancaster
+"""
+Dynamical evolution models for stellar feedback bubbles in molecular clouds.
+
+Provides the abstract base class Bubble and several concrete implementations
+of classical bubble evolution models:
+
+- SedovTaylorBW: instantaneous blast wave (Sedov-Taylor solution)
+- Spitzer: photo-ionized HII region expansion with the Hosokawa & Inutsuka
+  (2006) correction
+- EnergyDrivenWind: Weaver et al. (1977) energy-driven wind bubble
+- AdiabaticWind: Weaver et al. (1977) adiabatic wind bubble with full
+  multi-zone internal structure (free wind, shocked wind, shell, background)
+- MomentumDrivenWind: momentum-driven wind bubble
+- MD_CEM: co-evolution model for a HII region and a momentum-driven wind
+  bubble in pressure equilibrium
+- ED_CEM: co-evolution model for a HII region and an energy-driven wind
+  bubble in pressure equilibrium
+
+Author: Lachlan Lancaster
+"""
 
 import numpy as np
 from astropy import units as u

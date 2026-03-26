@@ -1,6 +1,18 @@
-# Various prescriptions for the star formation efficiency (SFE)
-# of a molecular cloud
-# author: Lachlan Lancaster
+"""
+Star formation efficiency (SFE) prescriptions for molecular clouds.
+
+Implements several analytic and semi-analytic models for the cloud-integrated
+star formation efficiency as a function of cloud properties and feedback
+parameters, including:
+
+- Grudić et al. (2018): surface-density-based SFE fit
+- Kim et al. (2018): ionization- and momentum-driven SFE prescriptions
+- Thompson & Krumholz (2016): time-evolving ODE model for the gas, ejected
+  gas, and stellar mass fractions in a turbulent cloud with log-normal surface
+  density distribution
+
+Author: Lachlan Lancaster
+"""
 
 import numpy as np
 from astropy import units as u
