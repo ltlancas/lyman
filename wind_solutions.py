@@ -4,6 +4,7 @@
 import numpy as np
 from astropy import units as u
 from astropy import constants as ac
+from astropy.units import Quantity
 import quantities
 from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
@@ -26,42 +27,35 @@ class WindModel(ABC):
         # this very roughly follows parameters for M82
         if "Mdot" not in self.__dict__:
             self.Mdot = 1.0 * u.Msun / u.yr
-        
+
         if "Edot" not in self.__dict__:
             self.Edot = 1.0e43 * u.erg / u.s
 
     def _check_parameter_units_parent(self):
-        t1 = u.get_physical_type(self.Edot)=="power"
-        t2 = u.get_physical_type(self.Mdot*u.s)=="mass"
-        if not(t1):
+        if not u.get_physical_type(self.Edot) == "power":
             raise ValueError("Units of Edot are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.Mdot*u.s) == "mass":
             raise ValueError("Units of Mdot are incorrect")
 
     @abstractmethod
-    def mach(self, r):
+    def mach(self, r: Quantity["length"]) -> float:
         pass
 
     @abstractmethod
-    def c(self, r):
+    def c(self, r: Quantity["length"]) -> Quantity["speed"]:
         pass
 
     @abstractmethod
-    def u(self, r):
+    def u(self, r: Quantity["length"]) -> Quantity["speed"]:
         pass
 
     @abstractmethod
-    def rho(self, r):
+    def rho(self, r: Quantity["length"]) -> Quantity["mass density"]:
         pass
 
     @abstractmethod
-    def press(self, r):
+    def press(self, r: Quantity["length"]) -> Quantity["pressure"]:
         pass
-
-    def _check_radius_units(self, r):
-        t1 = u.get_physical_type(r)=="length"
-        if not t1:
-            raise ValueError("Units of r are incorrect")
 
 class CC85Wind(WindModel):
     def __init__(self, **kwargs):
@@ -70,7 +64,7 @@ class CC85Wind(WindModel):
         self._check_parameter_units()
         self._set_derived_parameters()
 
-    def _set_parmeters(self):       
+    def _set_parmeters(self):
         if "gamma" not in self.__dict__:
             self.gamma = 5./3
         if "R" not in self.__dict__:
@@ -78,18 +72,15 @@ class CC85Wind(WindModel):
             self.R = 100.0 * u.pc
 
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.R)=="length"
-        t2 = u.get_physical_type(self.gamma)=="dimensionless"
-        if not(t1):
+        if not u.get_physical_type(self.R) == "length":
             raise ValueError("Units of R are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.gamma) == "dimensionless":
             raise ValueError("gamma should be dimensionless")
 
     def _set_derived_parameters(self):
         self.vinf = np.sqrt(2*self.Edot/self.Mdot).to(u.km/u.s)
 
-    def mach(self, r):
-        self._check_radius_units(r)
+    def mach(self, r: Quantity["length"]) -> float:
         g = self.gamma
         # the below represent Equations 4 & 5 of CC85
         # these give M^-2
@@ -117,23 +108,22 @@ class CC85Wind(WindModel):
         else:
             return mm2**-0.5
 
-    def c(self, r):
+    def c(self, r: Quantity["length"]) -> Quantity["speed"]:
         # sound speed profile
         mm = self.mach(r)
         return self.vinf / np.sqrt(mm**2 + 2./(self.gamma - 1))
 
-    def u(self, r):
+    def u(self, r: Quantity["length"]) -> Quantity["speed"]:
         # velocity profile
         mm = self.mach(r)
         cc = self.c(r)
         return mm * cc
-    
-    def rho(self, r):
-        uu =self.u(r)
+
+    def rho(self, r: Quantity["length"]) -> Quantity["mass density"]:
+        uu = self.u(r)
         res = self.Mdot/(4*np.pi*r**2*uu)
         return res.to(u.g/u.cm**3)
 
-    def press(self, r):
+    def press(self, r: Quantity["length"]) -> Quantity["pressure"]:
         cc = self.c(r)
         return cc**2 * self.rho(r) / self.gamma
-

@@ -5,6 +5,7 @@
 import numpy as np
 from astropy import units as u
 from astropy import constants as ac
+from astropy.units import Quantity
 import quantities
 from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
@@ -29,34 +30,23 @@ class Bubble(ABC):
             self.rho0 = 140*ac.m_p/(u.cm**3)
 
     def _check_parameter_units_parent(self):
-        t1 = u.get_physical_type(self.rho0)=="mass density"
-        if not(t1):
+        if not u.get_physical_type(self.rho0) == "mass density":
             raise ValueError("Units of rho0 are incorrect")
-    
-    def _check_time_units(self, t):
-        t1 = u.get_physical_type(t)=="time"
-        if not t1:
-            raise ValueError("Units of t are incorrect")
-
-    def _check_radius_units(self, r):
-        r1 = u.get_physical_type(r)=="length"
-        if not r1:
-            raise ValueError("Units of r are incorrect")
 
     @abstractmethod
-    def radius(self, t):
-        pass
-    
-    @abstractmethod
-    def velocity(self, t):
-        pass
-    
-    @abstractmethod
-    def momentum(self, t):
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         pass
 
     @abstractmethod
-    def pressure(self, t):
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
+        pass
+
+    @abstractmethod
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
+        pass
+
+    @abstractmethod
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         pass
 
 class SedovTaylorBW(Bubble):
@@ -69,31 +59,26 @@ class SedovTaylorBW(Bubble):
     def _set_parmeters(self, **kwargs):
         if "E" not in self.__dict__:
             self.E = 1e51*u.erg
-    
+
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.E)=="energy"
-        if not(t1):
+        if not u.get_physical_type(self.E) == "energy":
             raise ValueError("Units of E are incorrect")
 
-    def radius(self, t):
-        self._check_time_units(t)
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         r_ST = 1.15167*(self.E*t**2/(self.rho0))**(1./5)
         return r_ST.to("pc")
-    
-    def velocity(self, t):
-        self._check_time_units(t)
+
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         v_ST = 0.4*self.radius(t)/t
         return v_ST.to("km/s")
-    
-    def momentum(self, t):
-        self._check_time_units(t)
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         pr_ST = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_ST.to("solMass*km/s")
 
-    def pressure(self, t):
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         # TODO: fill this in with the correct number, this is simply
         #       a placeholder estimate
-        self._check_time_units(t)
         press_ST = self.E/(self.radius(t)**3)
         return (press_ST/ac.k_B).to("K/cm3")
 
@@ -120,50 +105,39 @@ class Spitzer(Bubble):
             self.muH = 1.4
         if "adj" not in self.__dict__:
             self.adj = True
-        
-    
+
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.Q0)=="frequency"
-        t2 = u.get_physical_type(self.ci)=="speed"
-        t3 = u.get_physical_type(self.alphaB)=="volumetric flow rate"
-        t4 = u.get_physical_type(self.muH)=="dimensionless"
-        t5 = type(self.adj)==bool
-        if not(t1):
+        if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.ci) == "speed":
             raise ValueError("Units of ci are incorrect")
-        if not(t3):
+        if not u.get_physical_type(self.alphaB) == "volumetric flow rate":
             raise ValueError("Units of alpha_B are incorrect")
-        if not(t4):
+        if not u.get_physical_type(self.muH) == "dimensionless":
             raise ValueError("Units of mu_H are incorrect")
-        if not(t5):
+        if not type(self.adj) == bool:
             raise ValueError("adj must be a boolean value")
 
-    def rhoi(self, t):
-        self._check_time_units(t)
+    def rhoi(self, t: Quantity["time"]) -> Quantity["mass density"]:
         rhoi_sp = self.rho0*(1 + 7*t/(4*self.tdio))**(-3./2)
         return rhoi_sp.to("solMass/pc3")
 
-    def radius(self, t):
-        self._check_time_units(t)
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         r_sp = self.RSt*(1 + 7*t/(4*self.tdio))**(4./7)
         return r_sp.to("pc")
-    
-    def velocity(self, t):
-        self._check_time_units(t)
+
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         v_sp = (self.RSt/self.tdio)*(1 + 7*t/(4*self.tdio))**(-3./7)
         return v_sp.to("km/s")
-    
-    def momentum(self, t):
-        self._check_time_units(t)
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         prefac = 4*np.pi*self.rho0*self.RSt**4/(3*self.tdio)
         pr_sp = prefac*(1 + 7*t/(4*self.tdio))**(9./7)
         if self.adj:
             pr_sp *= (1 - (self.RSt/self.radius(t))**1.5)
         return pr_sp.to("solMass*km/s")
-    
-    def pressure(self, t):
-        self._check_time_units(t)
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         press_sp = self.rhoi(t)*self.ci**2
         return (press_sp/ac.k_B).to("K/cm3")
 
@@ -177,29 +151,24 @@ class EnergyDrivenWind(Bubble):
     def _set_parmeters(self, **kwargs):
         if "Lwind" not in self.__dict__:
             self.Lwind = 1e38*u.erg/u.s
-    
+
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.Lwind)=="power"
-        if not(t1):
+        if not u.get_physical_type(self.Lwind) == "power":
             raise ValueError("Units of L_wind are incorrect")
 
-    def radius(self, t):
-        self._check_time_units(t)
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         r_we = (125*self.Lwind*(t**3)/(154*np.pi*self.rho0))**(1./5)
         return r_we.to("pc")
-    
-    def velocity(self, t):
-        self._check_time_units(t)
+
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         v_we = 0.6*self.radius(t)/t
         return v_we.to("km/s")
-    
-    def momentum(self, t):
-        self._check_time_units(t)
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         pr_we = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_we.to("solMass*km/s")
-    
-    def pressure(self, t):
-        self._check_time_units(t)
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         press_we = (10./33)*self.Lwind*t/((4*np.pi/3)*self.radius(t)**3)
         return (press_we/ac.k_B).to("K/cm3")
 
@@ -237,14 +206,11 @@ class AdiabaticWind(Bubble):
             self.gamma = 5./3
     
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.Lwind)=="power"
-        t2 = u.get_physical_type(self.rfb)=="length"
-        t3 = u.get_physical_type(self.Mdotw*u.s)=="mass"
-        if not(t1):
+        if not u.get_physical_type(self.Lwind) == "power":
             raise ValueError("Units of L_wind are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.rfb) == "length":
             raise ValueError("Units of r_fb are incorrect")
-        if not(t3):
+        if not u.get_physical_type(self.Mdotw*u.s) == "mass":
             raise ValueError("Units of Mdot_w are incorrect")
 
     def _set_derived_parameters(self):
@@ -265,34 +231,28 @@ class AdiabaticWind(Bubble):
     #################   TOP-LINE DEFAULT FUNCTIONS   ################
     #################################################################
 
-    def radius(self, t):
-        self._check_time_units(t)
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         r_we = self.alpha*(self.Lwind*(t**3)/self.rho0)**(1./5)
         return r_we.to("pc")
-    
-    def velocity(self, t):
-        self._check_time_units(t)
+
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         v_we = 0.6*self.radius(t)/t
         return v_we.to("km/s")
-    
-    def momentum(self, t):
-        self._check_time_units(t)
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         pr_we = 4*np.pi*self.rho0*self.radius(t)**3*self.velocity(t)/3
         return pr_we.to("solMass*km/s")
-    
-    def pressure(self, t):
-        self._check_time_units(t)
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         g = self.gamma
         prefac = 15*(g-1)/(4*np.pi*(9*g-4)*(self.xic*self.alpha)**3)
         press_we = prefac*(self.Lwind**2 * self.rho0**3 / t**4)**(1./5)
         return (press_we/ac.k_B).to("K/cm3")
-    
-    def density_profile(self, r, t):
+
+    def density_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["mass density"]:
         # returns the density of the bubble at radius r and time t
         # r : radius (generally an array)
         # t : time (should be a scalar)
-        self._check_time_units(t)
-        self._check_radius_units(r)
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -307,12 +267,10 @@ class AdiabaticWind(Bubble):
                            [rho_fw, rho_sw, rho_sh, rho_bg])
         return rho.to("solMass/pc3")
     
-    def velocity_profile(self, r, t):
+    def velocity_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["speed"]:
         # returns the velocity of the bubble at radius r and time t
         # r : radius (generally an array)
         # t : time (should be a scalar)
-        self._check_time_units(t)
-        self._check_radius_units(r)
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -327,12 +285,10 @@ class AdiabaticWind(Bubble):
                            [u_fw, u_sw, u_sh, u_bg])
         return u.to("km/s")
     
-    def pressure_profile(self, r, t):
+    def pressure_profile(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["pressure"]:
         # returns the pressure of the bubble at radius r and time t
         # r : radius (generally an array)
         # t : time (should be a scalar)
-        self._check_time_units(t)
-        self._check_radius_units(r)
         g = self.gamma
         r_rs = self.R_rs(t)
         r_b = self.radius(t)
@@ -393,10 +349,8 @@ class AdiabaticWind(Bubble):
                                           rtol=1e-12, atol = 1e-12)
         return None
     
-    def _v_sw(self, r, t):
+    def _v_sw(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["speed"]:
         # gives the radial velocity in the shocked wind region
-        self._check_radius_units(r)
-        self._check_time_units(t)
         g = self.gamma
         r_c = self.xic*self.radius(t)
         gfac = (9*g-4)/(15*g)
@@ -404,10 +358,9 @@ class AdiabaticWind(Bubble):
         t2 = ((4/(15*g))*(r/t)).to("km/s")
         return t1 + t2
     
-    def R_rs(self, t):
+    def R_rs(self, t: Quantity["time"]) -> Quantity["length"]:
         # gives the radius of the reverse shock as a function of time in the
         # adiabatic wind bubble solution
-        self._check_time_units(t)
         Rc = self.xic*self.radius(t)
         R_ballistic = self.Vwind*t
         g = self.gamma
@@ -428,27 +381,22 @@ class MomentumDrivenWind(Bubble):
             self.pdotw = 1e5*u.Msun*u.km/u.s/u.Myr
 
     def _check_parameter_units(self):
-        t1 = u.get_physical_type(self.pdotw)=="force"
-        if not(t1):
+        if not u.get_physical_type(self.pdotw) == "force":
             raise ValueError("Units of pdotw are incorrect")
 
-    def radius(self, t):
-        self._check_time_units(t)
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         r_md = ((3*self.pdotw*t**2)/(2*np.pi*self.rho0))**(1./4)
         return r_md.to("pc")
-    
-    def velocity(self, t):
-        self._check_time_units(t)
+
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         v_md = 0.5*self.radius(t)/t
         return v_md.to("km/s")
-    
-    def momentum(self, t):
-        self._check_time_units(t)
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         pr_md = self.pdotw*t
         return pr_md.to("solMass*km/s")
-    
-    def pressure(self, t):
-        self._check_time_units(t)
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         press_md = self.pdotw/(4*np.pi*self.radius(t)**2)
         return (press_md/ac.k_B).to("K/cm3")
 
@@ -491,21 +439,15 @@ class MD_CEM(Bubble):
             self.muH = 1.4
 
     def _check_parameter_units(self):
-        # check that the units are correct
-        t1 = u.get_physical_type(self.ci)=="speed"
-        t2 = u.get_physical_type(self.Q0)=="frequency"
-        t3 = u.get_physical_type(self.pdotw)=="force"
-        t4 = u.get_physical_type(self.alphaB)=="volumetric flow rate"
-        t5 = u.get_physical_type(self.muH)=="dimensionless"
-        if not(t1):
-            raise ValueError("Units of ci are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
-        if not(t3):
+        if not u.get_physical_type(self.ci) == "speed":
+            raise ValueError("Units of ci are incorrect")
+        if not u.get_physical_type(self.pdotw) == "force":
             raise ValueError("Units of pdotw are incorrect")
-        if not(t4):
+        if not u.get_physical_type(self.alphaB) == "volumetric flow rate":
             raise ValueError("Units of alpha_B are incorrect")
-        if not(t5):
+        if not u.get_physical_type(self.muH) == "dimensionless":
             raise ValueError("Units of mu_H are incorrect")
 
     def _set_derived_parameters(self):
@@ -589,20 +531,16 @@ class MD_CEM(Bubble):
         # use solve_ivp to get solution
         return solve_ivp(derivs,[0,100],[xii0,psi0],dense_output=True)
 
-    def radius(self, t):
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         # Returns the radius of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         ri = self.spitz_bubble.radius(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         ri += solution[0]*self.Req*(t>self.tswitch)
         return ri.to("pc")
 
-    def wind_radius(self, t):
+    def wind_radius(self, t: Quantity["time"]) -> Quantity["length"]:
         # Returns the radius of the wind bubble at time t
-        # t : the time
-        self._check_time_units(t)
         # up until tswitch the wind bubble follows the normal momentum-driven solution
         rw = self.wind_bubble.radius(t)*(t<self.tswitch)
         # afterwards it follows the joint evolution solution
@@ -612,21 +550,17 @@ class MD_CEM(Bubble):
         rw += xiw*self.Req*(t>self.tswitch)
         return rw.to("pc")
 
-    def velocity(self, t):
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         # Returns the velocity of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         # up until tswitch the ionized bubble follows the Spitzer solution
         vi = self.spitz_bubble.velocity(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         vi += solution[1]*self.Req/self.tdio*(t>self.tswitch)
         return vi.to("km/s")
-    
-    def momentum(self, t):
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         # returns the momentum carried by the joint bubble at time t
-        # t : the time
-        self._check_time_units(t)
         prefac = self.pscl
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -635,26 +569,20 @@ class MD_CEM(Bubble):
         pr += self.wind_bubble.momentum(t)*(t<self.tswitch)
         return pr.to("solMass*km/s")
 
-    def momentum_uncoupled(self, t):
+    def momentum_uncoupled(self, t: Quantity["time"]) -> Quantity["momentum"]:
         # returns the momentum carried by the joint bubble at time t
         # if the two constituent bubbles evolved independently
-        # t : the time
-        self._check_time_units(t)
         pr = self.spitz_bubble.momentum(t)
         pr += self.wind_bubble.momentum(t)
         return pr.to("solMass*km/s")
-    
-    def pressure(self, t):
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         # returns the pressure of the wind bubble at time t
-        # t : the time
-        self._check_time_units(t)
         press = self.pdotw/(4*np.pi*self.wind_radius(t)**2)
         return (press/ac.k_B).to("K/cm3")
-    
-    def pressure_ionized(self, t):
+
+    def pressure_ionized(self, t: Quantity["time"]) -> Quantity["pressure"]:
         # returns the pressure of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         press = self.spitz_bubble.pressure(t)*(t<self.tswitch)
         press += self.pressure(t)*(t>self.tswitch)
         return press
@@ -693,23 +621,16 @@ class ED_CEM(Bubble):
             self.muH = 1.4
 
     def _check_parameter_units(self):
-        # check that the units are correct
-        t1 = u.get_physical_type(self.ci)=="speed"
-        t2 = u.get_physical_type(self.Q0)=="frequency"
-        t3 = u.get_physical_type(self.Lwind)=="power"
-        t4 = u.get_physical_type(self.alphaB)=="volumetric flow rate"
-        t5 = u.get_physical_type(self.muH)=="dimensionless"
-        if not(t1):
-            raise ValueError("Units of ci are incorrect")
-        if not(t2):
+        if not u.get_physical_type(self.Q0) == "frequency":
             raise ValueError("Units of Q0 are incorrect")
-        if not(t3):
+        if not u.get_physical_type(self.ci) == "speed":
+            raise ValueError("Units of ci are incorrect")
+        if not u.get_physical_type(self.Lwind) == "power":
             raise ValueError("Units of L_wind are incorrect")
-        if not(t4):
+        if not u.get_physical_type(self.alphaB) == "volumetric flow rate":
             raise ValueError("Units of alpha_B are incorrect")
-        if not(t5):
+        if not u.get_physical_type(self.muH) == "dimensionless":
             raise ValueError("Units of mu_H are incorrect")
-
 
     def _set_derived_parameters(self):
         (ci, alphaB, muH) = (self.ci, self.alphaB, self.muH)
@@ -784,20 +705,16 @@ class ED_CEM(Bubble):
         # use solve_ivp to get solution
         return solve_ivp(derivs,[0,100],[xii0,Mi0,xiw0,Et0],dense_output=True)
 
-    def radius(self, t):
+    def radius(self, t: Quantity["time"]) -> Quantity["length"]:
         # Returns the radius of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         ri = self.spitz_bubble.radius(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         ri += solution[0]*self.Req*(t>self.tswitch)
         return ri.to("pc")
 
-    def wind_radius(self, t):
+    def wind_radius(self, t: Quantity["time"]) -> Quantity["length"]:
         # Returns the radius of the wind bubble at time t
-        # t : the time
-        self._check_time_units(t)        
         # up until tswitch the wind bubble follows the normal momentum-driven solution
         rw = self.wind_bubble.radius(t)*(t<self.tswitch)
         # afterwards it follows the joint evolution solution
@@ -807,21 +724,17 @@ class ED_CEM(Bubble):
         rw += xiw*self.Req*(t>self.tswitch)
         return rw.to("pc")
 
-    def velocity(self, t):
+    def velocity(self, t: Quantity["time"]) -> Quantity["speed"]:
         # Returns the velocity of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         # up until tswitch the ionized bubble follows the Spitzer solution
         vi = self.spitz_bubble.velocity(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
         vi += solution[1]*self.ci*(t>self.tswitch)
         return vi.to("km/s")
-    
-    def momentum(self, t):
+
+    def momentum(self, t: Quantity["time"]) -> Quantity["momentum"]:
         # returns the momentum carried by the joint bubble at time t
-        # t : the time
-        self._check_time_units(t)
         prefac = (4*np.pi/3)*self.Req**3*self.rho0*self.ci
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -830,19 +743,15 @@ class ED_CEM(Bubble):
         pr += self.wind_bubble.momentum(t)*(t<self.tswitch)
         return pr.to("solMass*km/s")
 
-    def momentum_uncoupled(self, t):
+    def momentum_uncoupled(self, t: Quantity["time"]) -> Quantity["momentum"]:
         # returns the momentum carried by the joint bubble at time t
         # if the two constituent bubbles evolved independently
-        # t : the time
-        self._check_time_units(t)
         pr = self.spitz_bubble.momentum(t)
         pr += self.wind_bubble.momentum(t)
         return pr.to("solMass*km/s")
-    
-    def pressure(self, t):
+
+    def pressure(self, t: Quantity["time"]) -> Quantity["pressure"]:
         # returns the pressure of the wind bubble at time t
-        # t : the time
-        self._check_time_units(t)
         press = self.wind_bubble.pressure(t)*(t<self.tswitch)
         chi = ((t-self.tswitch)/self.tdio).to(" ").value
         solution =  self.joint_sol.sol(chi)
@@ -850,11 +759,9 @@ class ED_CEM(Bubble):
         Pt = Pt*self.rho0*self.ci**2
         press += Pt*(t>self.tswitch)/ac.k_B
         return (press).to("K/cm3")
-    
-    def pressure_ionized(self, t):
+
+    def pressure_ionized(self, t: Quantity["time"]) -> Quantity["pressure"]:
         # returns the pressure of the ionized bubble at time t
-        # t : the time
-        self._check_time_units(t)
         press = self.spitz_bubble.pressure(t)*(t<self.tswitch)
         press += self.pressure(t)*(t>self.tswitch)
         return press
