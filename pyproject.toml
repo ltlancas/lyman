@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=80"]
+
+[project]
+name = "lyman"
+version = "0.0.1"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.3",
+    "astropy>=7.1",
+    "scipy>=1.16",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]

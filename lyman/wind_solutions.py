@@ -14,7 +14,7 @@ import numpy as np
 from astropy import units as u
 from astropy import constants as ac
 from astropy.units import Quantity
-import quantities
+from . import quantities
 from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
 from abc import ABC, abstractmethod

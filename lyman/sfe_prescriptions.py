@@ -18,7 +18,7 @@ import numpy as np
 from astropy import units as u
 from astropy import constants as aconsts
 from astropy.units import Quantity
-import quantities
+from . import quantities
 from scipy.special import erf
 from scipy.integrate import solve_ivp
 
@@ -40,7 +40,7 @@ def estar_Grudic18(Sigma_cl: Quantity["surface mass density"],
     """
     return 1./(1./emax + Scrit/Sigma_cl)
 
-def sigma_ion_Kim18(Xi: Quantity["mass flow rate"],
+def sigma_ion_Kim18(Xi: Quantity,
                     ci: Quantity["speed"] = 10*u.km/u.s,
                     alphaB: Quantity["volumetric flow rate"] = 3.11e-13*(u.cm**3/u.s),
                     muH: float = 1.4
@@ -82,7 +82,7 @@ def phitphiion_Kim18(Sigma_cl: Quantity["surface mass density"]) -> float:
     return c1 + c2*np.log10(S0 + c3)
 
 def estar_ion_Kim18(Sigma_cl: Quantity["surface mass density"],
-                    Xi: Quantity["mass flow rate"],
+                    Xi: Quantity,
                     ci: Quantity["speed"] = 10*u.km/u.s,
                     alphaB: Quantity["volumetric flow rate"] = 3.11e-13*(u.cm**3/u.s),
                     muH: float = 1.4

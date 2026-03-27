@@ -1,2 +1,4 @@
 # pycache files
 __pycache__
+# local installation info
+lyman.egg-info
