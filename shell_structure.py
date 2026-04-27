@@ -147,3 +147,47 @@ class AdiabaticShell(Shell):
         xi = (r/r_b).to(" ").value
         p_sol = self.ad_shell_sol.sol(xi)[2]
         return self.rho0 * (drb_dt**2) * p_sol
+
+class IsothermalShell(Shell):
+    def __init__(self, bub, **kwargs):
+        super().__init__(bub, **kwargs)
+        self._set_parameters()
+        self._check_parameter_units()
+
+    def _set_parameters(self):
+        # isothermal sound speed in the shell
+        if "cs" not in self.__dict__:
+            self.cs = 10*u.km/u.s
+
+    def _check_parameter_units(self):
+        t1 = u.get_physical_type(self.cs)=="speed"
+        if not t1:
+            raise ValueError("Units of cs are incorrect")
+        return None
+
+    def density(self, r, t):
+        self._check_radius_units(r)
+        self._check_time_units(t)
+        r_b = self.bubble.radius(t)
+        drb_dt = self.bubble.velocity(t)
+        # density just inside the shell (post-shock)
+        rho_ps = self.rho0 * (drb_dt/self.cs)**2
+        # assuming an isothermal shock, the density profile in the shell is exponential
+        res = rho_ps * np.exp((r_b - r)*drb_dt/self.cs**2)
+        return res.to(u.g/u.cm**3)
+
+    def velocity(self, r, t):
+        self._check_radius_units(r)
+        self._check_time_units(t)
+        r_b = self.bubble.radius(t)
+        drb_dt = self.bubble.velocity(t)
+        rho_r = self.density(r, t)
+        # mass conservation in the shell
+        res = (self.rho0 * drb_dt * r_b**2)/(rho_r * r**2)
+        return res.to(u.km/u.s)
+
+    def pressure(self, r, t):
+        self._check_radius_units(r)
+        self._check_time_units(t)
+        rho_r = self.density(r, t)
+        return rho_r * self.cs**2
