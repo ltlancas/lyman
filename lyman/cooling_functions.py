@@ -9,6 +9,9 @@ from astropy import units as u
 from astropy import constants as ac
 from astropy.units import Quantity
 from abc import ABC, abstractmethod
+from pathlib import Path
+
+_HERE = Path(__file__).parent
 
 
 class Cooling(ABC):
@@ -166,7 +169,7 @@ class KIGS(Cooling):
         self.ne_ntot = self.mu/self.mu_e
         self.gamma = 5./3
 
-        cooling_data = np.load("cooling_tables/kigs_cooling.txt").T
+        cooling_data = np.loadtxt(_HERE / "cooling_tables/kigs_cooling.txt").T
         (self.Tarr, self.cooling_arr, self.heating_arr) = cooling_data
         self.Tarr *= u.K
         self.cooling_arr *= u.erg/u.s*(u.cm**3)
