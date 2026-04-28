@@ -287,8 +287,10 @@ class Spitzer(Bubble):
 
 class EnergyDrivenWind(Bubble):
     """
-    Weaver et al. (1977) solution for a wind-blown bubble in the energy-driven
-    (radiative cooling negligible) regime. The shell expands as R ~ t^(3/5).
+    Weaver et al. (1977) solution for a wind-blown bubble once the shell has been able to
+    cool but assuming that radiative cooling in the wind bubble interior is negligible.
+    This follows Section 3 of Weaver et al. but ignore conductive evaporation into the
+    wind bubble interior
     """
 
     def __init__(self, **kwargs):
@@ -367,10 +369,11 @@ class AdiabaticWind(Bubble):
     """
     Weaver et al. (1977) Section 2 solution for an adiabatic wind bubble.
 
-    No radiative losses are assumed anywhere in the bubble, including in the
-    shell. Thermal conduction is also not treated. The internal structure
-    (free-wind, shocked-wind, shell, and background regions) is computed from
-    the dimensionless shell structure equations and a CC85 free-wind solution.
+    No radiative losses are assumed anywhere in the bubble, including in the shell.
+    Thermal conduction is also not treated (it's not important given the other
+    assumptions). The internal structure (free-wind, shocked-wind, shell, and
+    background regions) is computed from the dimensionless shell structure equations
+    and a CC85 free-wind solution.
     """
 
     def __init__(self, **kwargs):
@@ -591,15 +594,89 @@ class AdiabaticWind(Bubble):
                            [p_fw, p_sw, p_sh, p_bg])
         return (p/ac.k_B).to("K/cm3")
     
-    # TODO: make a separate file for shell structure solutions
-    #       so this is similar to the free-wind implementation here 
-    #     - Also, replace the string versions of the 
-    #       param.to() unit conversion calls
-    #################################################################
-    ################ FUNCTIONS FOR INTERNAL STRUCTURE ###############
-    #################################################################
+class WeaverS3(Bubble):
+    """
+    Weaver et al. (1977) Section 3 solution for a wind bubble with cooling, both in the
+    shell and in the bubble interior, which is caused by mass-loading of the bubble
+    interior dur to conductive heat transport at the interface.
 
-    def _ad_shell_solve(self, kappa):
+    The internal structure (free-wind, shocked-wind, shell, and
+    background regions) is computed from the dimensionless shell structure equations
+    and a CC85 free-wind solution.
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Args:
+            rho0: background mass density (default: 140 m_p/cm^3)
+            Lwind: wind mechanical luminosity (default: 1e38 erg/s)
+            Mdotw: wind mass loss rate (default: 1e-4 Msun/yr)
+            rfb: free-wind injection radius (default: 1 pc)
+            gamma: adiabatic index (default: 5/3)
+        """
+        super().__init__(**kwargs)
+        self._set_parmeters(**kwargs)
+        self._check_parameter_units()
+        self._ad_shell_solve(-2./3)
+        self._set_derived_parameters()
+
+        # set free-wind solution
+        fw_dict = {"Mdot": self.Mdotw, "Edot": self.Lwind,
+                   "R": self.rfb, "gamma":self.gamma}
+        self.free_wind = wind_solutions.CC85Wind(**fw_dict)
+
+    def _set_parmeters(self, **kwargs):
+        """
+        Sets AdiabaticWind-specific parameters, applying defaults if not provided.
+
+        Initialises alpha to the approximate Weaver et al. (1977) value of 0.88
+        (given after their Equation 13); this is later refined by the numerical
+        shell solution in _set_derived_parameters.
+        """
+
+        if "Lwind" not in self.__dict__:
+            self.Lwind = 1e38*u.erg/u.s
+        if "Mdotw" not in self.__dict__:
+            self.Mdotw = 1e-4*u.Msun/u.yr
+        if "rfb" not in self.__dict__:
+            self.rfb = 1.0*u.pc
+        if "gamma" not in self.__dict__:
+            self.gamma = 5./3
+
+    def _check_parameter_units(self):
+        """Validates the units of AdiabaticWind-specific parameters."""
+        if not u.get_physical_type(self.Lwind) == "power":
+            raise ValueError("Units of L_wind are incorrect")
+        if not u.get_physical_type(self.rfb) == "length":
+            raise ValueError("Units of r_fb are incorrect")
+        if not u.get_physical_type(self.Mdotw*u.s) == "mass":
+            raise ValueError("Units of Mdot_w are incorrect")
+
+    def _set_derived_parameters(self):
+        """
+        Computes derived parameters from the numerical shell structure solution.
+
+        Sets self.xic (the dimensionless inner shell radius, ~0.86), self.Pxic
+        (the dimensionless pressure at the inner shell edge, ~0.59), self.alpha
+        (the dimensionless scaling prefactor, ~0.88), and self.Vwind (the wind
+        terminal velocity). All three dimensionless quantities are determined
+        directly from the numerical solution rather than using the approximate
+        Weaver et al. (1977) values.
+        """
+        # fraction of the shell's outer radius at which the shell's inner radius lies
+        # approximate 0.86, but determined here from the numerical solution
+        xic = self.ad_shell_sol.t[-1]
+        # the dimensionless value of the pressure in the shell at the inner edge of the
+        # shell radius. Approx 0.59 but determined here from the numerical solution
+        Pxic = self.ad_shell_sol.y[2,-1]
+        g = self.gamma
+        # the dimensionless pre-factor in the scaling solution. Approx 0.88 but
+        # determined here for general gamma and the numerical solution
+        self.alpha = (125*(g - 1)/(12*np.pi*xic**3*Pxic*(9*g - 4)))**0.2
+        (self.xic, self.Pxic) = (xic, Pxic)
+        self.Vwind = np.sqrt(2*self.Lwind/self.Mdotw).to("km/s")
+
+    def _wind_solution(self):
         """
         Solves the structure equation for the dimensionless parameters of the shell
         surrounding an adiabatic wind bubble following section 2 of Weaver et al. (1977).
@@ -636,47 +713,18 @@ class AdiabaticWind(Bubble):
                                           events=[event_1], dense_output=True,\
                                           rtol=1e-12, atol = 1e-12)
         return None
-    
-    def _v_sw(self, r: Quantity["length"], t: Quantity["time"]) -> Quantity["speed"]:
-        """
-        Returns the radial velocity in the shocked wind region.
 
-        Args:
-            r: radius
-            t: time
+    #################################################################
+    #################   TOP-LINE DEFAULT FUNCTIONS   ################
+    #################################################################
 
-        Returns:
-            Velocity in km/s
-        """
-        g = self.gamma
-        r_c = self.xic*self.radius(t)
-        gfac = (9*g-4)/(15*g)
-        t1 = (gfac*r_c**3/(r**2*t)).to("km/s")
-        t2 = ((4/(15*g))*(r/t)).to("km/s")
-        return t1 + t2
-    
-    def R_rs(self, t: Quantity["time"]) -> Quantity["length"]:
-        """
-        Returns the reverse shock radius.
 
-        Args:
-            t: time
-
-        Returns:
-            Reverse shock radius in parsecs
-        """
-        Rc = self.xic*self.radius(t)
-        R_ballistic = self.Vwind*t
-        g = self.gamma
-        gfac = ((g+1)/(g-1)) * ((9*g-4)/(15*g)) * ((g+1)**2/(4*g))**(1/(g-1))
-        res = np.sqrt(gfac*Rc**3/R_ballistic)
-        return res.to("pc")
 
 
 class MomentumDrivenWind(Bubble):
     """
     Momentum-driven wind bubble solution. The shell expands as R ~ t^(1/2),
-    driven by the direct ram pressure of the wind.
+    driven by the direct ram pressure of the wind. No interior structure is treated
     """
 
     def __init__(self, **kwargs):
